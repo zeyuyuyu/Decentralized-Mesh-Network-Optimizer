@@ -1,69 +1,53 @@
 import networkx as nx
 import numpy as np
+import time
 
-def optimize_mesh_network(nodes, links):
-    """
-    Optimizes a decentralized mesh network by minimizing the overall network latency.
+class MeshNetworkOptimizer:
+    def __init__(self, num_nodes, node_positions, link_capacities):
+        self.G = nx.Graph()
+        self.num_nodes = num_nodes
+        self.node_positions = node_positions
+        self.link_capacities = link_capacities
+        self.build_network()
 
-    Args:
-        nodes (list): List of node objects with properties like location, capacity, etc.
-        links (list): List of link objects with properties like bandwidth, latency, etc.
+    def build_network(self):
+        for i in range(self.num_nodes):
+            self.G.add_node(i, pos=self.node_positions[i])
+        for i in range(self.num_nodes):
+            for j in range(i+1, self.num_nodes):
+                self.G.add_edge(i, j, capacity=self.link_capacities[i,j])
 
-    Returns:
-        networkx.Graph: Optimized mesh network graph.
-    """
-    G = nx.Graph()
+    def optimize_routing(self, source, destination, bandwidth_demand):
+        start_time = time.time()
+        path = self.find_shortest_path(source, destination, bandwidth_demand)
+        if path is None:
+            return None
+        self.update_link_capacities(path, bandwidth_demand)
+        end_time = time.time()
+        print(f'Optimization took {end_time - start_time:.2f} seconds')
+        return path
 
-    # Add nodes to the graph
-    for node in nodes:
-        G.add_node(node.id, **node.__dict__)
+    def find_shortest_path(self, source, destination, bandwidth_demand):
+        capacity_map = nx.get_edge_attributes(self.G, 'capacity')
+        try:
+            path = nx.shortest_path(self.G, source=source, target=destination, weight=lambda u, v, d: 1/max(d['capacity'] - bandwidth_demand, 1e-6))
+        except nx.exception.NetworkXNoPath:
+            return None
+        if not self.path_has_capacity(path, bandwidth_demand):
+            return None
+        return path
 
-    # Add links to the graph
-    for link in links:
-        G.add_edge(link.source.id, link.target.id, **link.__dict__)
+    def path_has_capacity(self, path, bandwidth_demand):
+        capacity_map = nx.get_edge_attributes(self.G, 'capacity')
+        for i in range(len(path)-1):
+            u, v = path[i], path[i+1]
+            if capacity_map[(u, v)] < bandwidth_demand:
+                return False
+        return True
 
-    # Apply optimization algorithm
-    routing_table = _optimize_routing(G)
-
-    return G, routing_table
-
-def _optimize_routing(G):
-    """
-    Optimizes the routing table for the mesh network using a decentralized algorithm.
-
-    Args:
-        G (networkx.Graph): The mesh network graph.
-
-    Returns:
-        dict: Optimized routing table mapping node IDs to next hop node IDs.
-    """
-    routing_table = {}
-
-    for node in G.nodes:
-        # Find the best next hop for each destination node
-        best_next_hop = _find_best_next_hop(G, node)
-        routing_table[node] = best_next_hop
-
-    return routing_table
-
-def _find_best_next_hop(G, source_node):
-    """
-    Finds the best next hop for a given source node in the mesh network.
-
-    Args:
-        G (networkx.Graph): The mesh network graph.
-        source_node (str): The ID of the source node.
-
-    Returns:
-        str: The ID of the best next hop node.
-    """
-    best_next_hop = None
-    min_latency = float('inf')
-
-    for neighbor in G.neighbors(source_node):
-        path_latency = sum(d['latency'] for u, v, d in nx.shortest_path(G, source=source_node, target=neighbor, weight='latency'))
-        if path_latency < min_latency:
-            min_latency = path_latency
-            best_next_hop = neighbor
-
-    return best_next_hop
+    def update_link_capacities(self, path, bandwidth_demand):
+        capacity_map = nx.get_edge_attributes(self.G, 'capacity')
+        for i in range(len(path)-1):
+            u, v = path[i], path[i+1]
+            capacity_map[(u, v)] -= bandwidth_demand
+            self.G[u][v]['capacity'] = capacity_map[(u, v)]
