@@ -1,53 +1,87 @@
 import networkx as nx
 import numpy as np
-import time
 
-class MeshNetworkOptimizer:
-    def __init__(self, num_nodes, node_positions, link_capacities):
-        self.G = nx.Graph()
-        self.num_nodes = num_nodes
-        self.node_positions = node_positions
-        self.link_capacities = link_capacities
-        self.build_network()
+def optimize_mesh_network(nodes, links):
+    """
+    Optimizes a decentralized mesh network to improve performance and resilience.
+    
+    Args:
+        nodes (list): List of node objects with attributes like location, capacity, etc.
+        links (list): List of link objects with attributes like bandwidth, latency, etc.
+    
+    Returns:
+        G (networkx.Graph): Optimized mesh network graph.
+    """
+    G = nx.Graph()
+    
+    # Add nodes to the graph
+    for node in nodes:
+        G.add_node(node.id, **node.__dict__)
+    
+    # Add links to the graph
+    for link in links:
+        G.add_edge(link.source.id, link.target.id, **link.__dict__)
+    
+    # Apply decentralized optimization algorithm
+    for i in range(100):
+        for node in G.nodes():
+            neighbors = list(G.neighbors(node))
+            if len(neighbors) > 0:
+                # Compute optimal routing and load balancing
+                optimal_routes = compute_optimal_routes(G, node, neighbors)
+                update_routing_tables(G, node, optimal_routes)
+                balance_load(G, node, neighbors)
+    
+    return G
 
-    def build_network(self):
-        for i in range(self.num_nodes):
-            self.G.add_node(i, pos=self.node_positions[i])
-        for i in range(self.num_nodes):
-            for j in range(i+1, self.num_nodes):
-                self.G.add_edge(i, j, capacity=self.link_capacities[i,j])
+def compute_optimal_routes(G, node, neighbors):
+    """
+    Computes the optimal routes for a node in the mesh network.
+    
+    Args:
+        G (networkx.Graph): The mesh network graph.
+        node (str): The ID of the node.
+        neighbors (list): List of neighboring node IDs.
+    
+    Returns:
+        optimal_routes (dict): Dictionary mapping neighbor IDs to optimal route metrics.
+    """
+    optimal_routes = {}
+    for neighbor in neighbors:
+        # Compute optimal route metrics like latency, bandwidth, etc.
+        route_metrics = compute_route_metrics(G, node, neighbor)
+        optimal_routes[neighbor] = route_metrics
+    return optimal_routes
 
-    def optimize_routing(self, source, destination, bandwidth_demand):
-        start_time = time.time()
-        path = self.find_shortest_path(source, destination, bandwidth_demand)
-        if path is None:
-            return None
-        self.update_link_capacities(path, bandwidth_demand)
-        end_time = time.time()
-        print(f'Optimization took {end_time - start_time:.2f} seconds')
-        return path
+def update_routing_tables(G, node, optimal_routes):
+    """
+    Updates the routing table for a node in the mesh network.
+    
+    Args:
+        G (networkx.Graph): The mesh network graph.
+        node (str): The ID of the node.
+        optimal_routes (dict): Dictionary mapping neighbor IDs to optimal route metrics.
+    """
+    G.nodes[node]['routing_table'] = optimal_routes
 
-    def find_shortest_path(self, source, destination, bandwidth_demand):
-        capacity_map = nx.get_edge_attributes(self.G, 'capacity')
-        try:
-            path = nx.shortest_path(self.G, source=source, target=destination, weight=lambda u, v, d: 1/max(d['capacity'] - bandwidth_demand, 1e-6))
-        except nx.exception.NetworkXNoPath:
-            return None
-        if not self.path_has_capacity(path, bandwidth_demand):
-            return None
-        return path
-
-    def path_has_capacity(self, path, bandwidth_demand):
-        capacity_map = nx.get_edge_attributes(self.G, 'capacity')
-        for i in range(len(path)-1):
-            u, v = path[i], path[i+1]
-            if capacity_map[(u, v)] < bandwidth_demand:
-                return False
-        return True
-
-    def update_link_capacities(self, path, bandwidth_demand):
-        capacity_map = nx.get_edge_attributes(self.G, 'capacity')
-        for i in range(len(path)-1):
-            u, v = path[i], path[i+1]
-            capacity_map[(u, v)] -= bandwidth_demand
-            self.G[u][v]['capacity'] = capacity_map[(u, v)]
+def balance_load(G, node, neighbors):
+    """
+    Balances the load on a node in the mesh network.
+    
+    Args:
+        G (networkx.Graph): The mesh network graph.
+        node (str): The ID of the node.
+        neighbors (list): List of neighboring node IDs.
+    """
+    total_load = sum([G.nodes[neighbor]['load'] for neighbor in neighbors])
+    avg_load = total_load / len(neighbors)
+    for neighbor in neighbors:
+        neighbor_load = G.nodes[neighbor]['load']
+        if neighbor_load > avg_load:
+            # Offload some traffic to lower-load neighbors
+            offload_amount = neighbor_load - avg_load
+            G.nodes[neighbor]['load'] -= offload_amount
+            for low_load_neighbor in neighbors:
+                if G.nodes[low_load_neighbor]['load'] < avg_load:
+                    G.nodes[low_load_neighbor]['load'] += offload_amount / (len(neighbors) - 1)
+                    break
